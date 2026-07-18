@@ -1,0 +1,12 @@
+{
+  "name": "founder-cockpit-functions",
+  "description": "Optional Firebase Cloud Functions for live Shopify + Outlook (all-Firebase hosting option)",
+  "main": "index.js",
+  "engines": {
+    "node": "20"
+  },
+  "dependencies": {
+    "firebase-functions": "^5.0.0"
+  },
+  "private": true
+}

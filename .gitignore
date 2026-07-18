@@ -1,0 +1,22 @@
+# dependencies
+node_modules/
+functions/node_modules/
+
+# secrets / local env — NEVER commit these
+.env
+.env.*
+*.local
+
+# platform build/cache
+.netlify/
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+ui-debug.log
+
+# os
+.DS_Store
+Thumbs.db
+
+# claude code local settings
+.claude/settings.local.json
