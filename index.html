@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Founder Cockpit — Personal Command Center</title>
+<meta name="theme-color" content="#0D1015">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" href="/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Cockpit">
 <style>*{margin:0}html,body{background:#0D1015}</style>
 </head>
 <body>
@@ -972,7 +979,7 @@
     </div><!-- /tab-journal -->
 
     <footer class="foot">
-      Tilt Energy cockpit · <span id="footdate">—</span> &nbsp;·&nbsp; Shopify synced Jul 18 (snapshot) &nbsp;·&nbsp; <kbd>T</kbd> theme &nbsp;·&nbsp; Entries save by date in this browser — use <b>Export backup</b> for a permanent, portable copy
+      Tilt Energy cockpit · <span id="footdate">—</span> &nbsp;·&nbsp; <span id="footSync">Shopify · snapshot</span> &nbsp;·&nbsp; <kbd>T</kbd> theme &nbsp;·&nbsp; Entries save by date in this browser — use <b>Export backup</b> for a permanent, portable copy
     </footer>
   </div>
 </div>
@@ -1442,11 +1449,31 @@
     var sn = document.getElementById("syncNote"); if (sn) sn.textContent = "Tilt Energy · live from Shopify";
     if (typeof renderHomeTiles === "function") renderHomeTiles();
   }
+  function setFootSync(txt) { var el = document.getElementById("footSync"); if (el) el.textContent = txt; }
+  function nowHM() { var d = new Date(); return pad(d.getHours()) + ":" + pad(d.getMinutes()); }
+  // Parse a failed /api response into a short, human reason so problems are
+  // visible instead of silently swallowed (e.g. "not configured" vs "offline").
+  function apiReason(r) {
+    return r.json().then(function (b) { return (b && b.error) ? b.error : ("HTTP " + r.status); },
+      function () { return "HTTP " + r.status; });
+  }
+  function shortReason(msg) { return /not configured/i.test(msg) ? "not configured" : "offline"; }
+
   function initLiveData() {
     // These only resolve on your Netlify deployment; elsewhere they fail quietly and the snapshot stays.
     try {
-      fetch("/api/shopify").then(function (r) { return r.ok ? r.json() : Promise.reject(r); }).then(applyShopify).catch(function () {});
-      fetch("/api/outlook").then(function (r) { return r.ok ? r.json() : Promise.reject(r); }).then(function (d) { if (d && d.events && agendaApply) agendaApply(d.events); }).catch(function () {});
+      fetch("/api/shopify")
+        .then(function (r) { return r.ok ? r.json() : apiReason(r).then(function (m) { return Promise.reject(m); }); })
+        .then(function (d) { applyShopify(d); setFootSync("Shopify · live · " + nowHM()); })
+        .catch(function (err) {
+          var why = shortReason(typeof err === "string" ? err : "offline");
+          setFootSync("Shopify · snapshot (" + why + ")");
+          var sn = document.getElementById("syncNote"); if (sn) sn.textContent = "Tilt Energy · snapshot (" + why + ")";
+        });
+      fetch("/api/outlook")
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
+        .then(function (d) { if (d && d.events && agendaApply) agendaApply(d.events); })
+        .catch(function () {});
     } catch (e) {}
   }
 
@@ -2057,6 +2084,14 @@
   initFirebase();
   drawAll();
   if (typeof initLiveData === "function") initLiveData();
+
+  // Register the service worker so the app is installable and works offline.
+  // Only meaningful over http(s); silently skipped when opened as a local file.
+  if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("/sw.js").catch(function () {});
+    });
+  }
 })();
 </script>
 
