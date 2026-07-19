@@ -1451,7 +1451,7 @@
   }
 
   /* ---------- Focus timer: custom duration, alarm, session log ---------- */
-  var durationMin = 25, TOTAL = durationMin * 60, remain = TOTAL, running = false, ivl = null;
+  var durationMin = 25, TOTAL = durationMin * 60, remain = TOTAL, running = false, ivl = null, endAt = 0;
   var ring = document.getElementById("ringFg"), CIRC = 2 * Math.PI * 47;
   ring.style.strokeDasharray = CIRC;
   var timerToggle = document.getElementById("timerToggle");
@@ -1499,14 +1499,29 @@
     focusDone.hidden = false; document.getElementById("focusNote").focus();
     remain = TOTAL;
   }
+  // Derive remaining time from the wall clock (endAt), not by counting ticks.
+  // Background tabs throttle setInterval (as slow as once/minute), so a
+  // decrement-per-tick countdown drifts badly while alt-tabbed; recomputing
+  // from Date.now() keeps it accurate and lets it catch up on return.
+  function syncRemain() { remain = Math.max(0, Math.round((endAt - Date.now()) / 1000)); }
+  function tickTimer() {
+    if (!running) return;
+    syncRemain();
+    if (remain <= 0) { finishTimer(); return; }
+    renderTimer();
+  }
   function startStop() {
     ensureAudio();
-    if (running) { clearInterval(ivl); running = false; timerToggle.textContent = "Resume"; return; }
+    if (running) { syncRemain(); clearInterval(ivl); running = false; timerToggle.textContent = "Resume"; renderTimer(); return; }
     if (remain <= 0) remain = TOTAL;
+    endAt = Date.now() + remain * 1000;
     running = true; timerToggle.textContent = "Pause";
-    ivl = setInterval(function () { remain--; if (remain <= 0) { finishTimer(); return; } renderTimer(); }, 1000);
+    ivl = setInterval(tickTimer, 1000);
   }
   timerToggle.addEventListener("click", startStop);
+  // Snap to the correct time the moment the tab regains focus, rather than
+  // waiting for the (throttled) interval to fire.
+  document.addEventListener("visibilitychange", function () { if (!document.hidden && running) tickTimer(); });
   document.getElementById("timerReset").addEventListener("click", function () {
     clearInterval(ivl); running = false; remain = TOTAL; renderTimer(); timerToggle.textContent = "Start"; focusDone.hidden = true;
   });
