@@ -6,6 +6,11 @@
   command = ""
   functions = "netlify/functions"
 
+# Functions use the global fetch() built into Node 18+. Pin the runtime so a
+# change to Netlify's default version can never break them.
+[build.environment]
+  NODE_VERSION = "20"
+
 # Pretty API routes → serverless functions (live Shopify + Outlook)
 [[redirects]]
   from = "/api/shopify"
