@@ -486,8 +486,19 @@
   .card-add .grow { flex: 1; min-width: 100px; }
   .card-add .unit { font-size: 12px; color: var(--muted); }
   .row-del { opacity: 0; border: 0; background: transparent; color: var(--faint); cursor: pointer; font-size: 15px; line-height: 1; padding: 2px 5px; border-radius: 6px; flex: none; transition: .15s; }
-  .g-row:hover .row-del, .hb:hover .row-del, .debt-row:hover .row-del, .ag-row:hover .row-del { opacity: 1; }
+  .g-row:hover .row-del, .hb:hover .row-del, .debt-row:hover .row-del, .ag-row:hover .row-del, .task:hover .row-ctl { opacity: 1; }
   .row-del:hover { color: var(--crit); background: var(--crit-soft); }
+  /* Inline edit control (rename) — shares the row-del look but neutral hover */
+  .row-edit { opacity: 0; border: 0; background: transparent; color: var(--faint); cursor: pointer; line-height: 1; padding: 3px 5px; border-radius: 6px; flex: none; transition: .15s; margin-top: 1px; }
+  .row-edit svg { width: 14px; height: 14px; display: block; }
+  .row-edit:hover { color: var(--brass); background: var(--brass-soft); }
+  .row-ctl { display: flex; gap: 1px; margin-left: auto; align-self: flex-start; }
+  /* Inline edit form that replaces a task row while renaming */
+  .task-edit { display: flex; gap: 6px; align-items: center; padding: 7px 8px; border-radius: 10px; border: 1px solid var(--brass-line); background: var(--surface-inset); flex-wrap: wrap; }
+  .task-edit input[type=text] { flex: 1 1 140px; min-width: 0; border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 7px 9px; color: var(--ink); font-family: inherit; font-size: 14px; font-weight: 550; }
+  .task-edit select { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 7px 8px; color: var(--ink); font-family: inherit; font-size: 12px; }
+  /* On touch devices (no hover) keep row controls visible so they're tappable */
+  @media (hover: none) { .g-row .row-del, .hb .row-del, .debt-row .row-del, .ag-row .row-del, .task .row-ctl { opacity: .5; } }
   .g-row { position: relative; }
   .g-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 6px; }
   .g-top .okr-name { flex: 1; cursor: text; }
@@ -766,7 +777,7 @@
             <select id="actionPrio" aria-label="Priority"><option value="p1">Critical</option><option value="p2">High</option><option value="p3" selected>Routine</option></select>
             <button class="btn primary sm" type="submit">Add</button>
           </form>
-          <div class="hint-edit">Tasks stay; checkmarks reset every morning</div>
+          <div class="hint-edit">Hover a task to edit ✎ or remove ×· tasks stay; checkmarks reset every morning</div>
         </section>
 
         <!-- Focus + micro goals stacked via two cards -->
@@ -822,7 +833,7 @@
             <input class="grow" id="microText" type="text" placeholder="Add a micro goal…" aria-label="Micro goal" required>
             <button class="btn primary sm" type="submit">Add</button>
           </form>
-          <div class="hint-edit">Resets each day</div>
+          <div class="hint-edit">Hover a goal to edit ✎ or remove × · resets each day</div>
         </section>
 
         <!-- Gratitude -->
@@ -1185,25 +1196,57 @@
     function saveItems(a) { save(cfg.key, a); }
     function doneSet() { var log = loadLog(); return ((log[todayISO()] || {})[cfg.doneField]) || []; }
     function setDone(ids) { var log = loadLog(), d = todayISO(); log[d] = log[d] || {}; log[d][cfg.doneField] = ids; saveLog(log); }
+    var editingId = null;
+    var PENCIL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+    function prioOptions(cur) {
+      return ["p1", "p2", "p3"].map(function (p) { return '<option value="' + p + '"' + (p === cur ? " selected" : "") + '>' + PRIO_LABEL[p] + '</option>'; }).join("");
+    }
     function render() {
       var arr = items(), done = doneSet();
       listEl.innerHTML = arr.map(function (it) {
+        if (it.id === editingId) {
+          return '<div class="task-edit" data-editrow="' + it.id + '">'
+            + '<input type="text" value="' + esc(it.text) + '" aria-label="Edit task">'
+            + (cfg.prioId ? '<select data-editprio aria-label="Priority">' + prioOptions(it.prio) + '</select>' : '')
+            + '<button class="btn primary sm" type="button" data-save="' + it.id + '">Save</button>'
+            + '<button class="btn sm" type="button" data-cancel="1">Cancel</button></div>';
+        }
         var isDone = done.indexOf(it.id) >= 0;
         var sub = "";
         if (it.prio || it.meta) sub = '<span class="task-sub">' + (it.prio ? '<span class="pill ' + it.prio + '">' + PRIO_LABEL[it.prio] + '</span> ' : '') + (it.meta ? esc(it.meta) : '') + '</span>';
-        return '<button class="task' + (isDone ? ' done' : '') + '" type="button" data-id="' + it.id + '"><span class="check">' + CHECK + '</span><span class="task-body"><span class="task-title">' + esc(it.text) + '</span>' + sub + '</span><span class="row-del" data-del="' + it.id + '" title="Remove" role="button">&times;</span></button>';
+        return '<button class="task' + (isDone ? ' done' : '') + '" type="button" data-id="' + it.id + '"><span class="check">' + CHECK + '</span><span class="task-body"><span class="task-title">' + esc(it.text) + '</span>' + sub + '</span><span class="row-ctl"><span class="row-edit" data-edit-id="' + it.id + '" title="Edit" role="button">' + PENCIL + '</span><span class="row-del" data-del="' + it.id + '" title="Remove" role="button">&times;</span></span></button>';
       }).join("") || '<div class="hint-edit" style="border:0;padding:6px 2px">Nothing yet — add one below.</div>';
       var total = arr.length, dn = arr.filter(function (it) { return done.indexOf(it.id) >= 0; }).length;
       document.getElementById(cfg.counterId).textContent = dn + " of " + total + " done";
       document.getElementById(cfg.barId).style.width = (total ? dn / total * 100 : 0) + "%";
+      if (editingId) { var inp = listEl.querySelector(".task-edit input[type=text]"); if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); } }
+    }
+    function commitEdit(id) {
+      var row = listEl.querySelector('.task-edit[data-editrow="' + id + '"]');
+      if (row) {
+        var text = row.querySelector("input[type=text]").value.trim();
+        var sel = row.querySelector("[data-editprio]");
+        var arr = items();
+        arr.forEach(function (it) { if (it.id === id) { if (text) it.text = text; if (sel) it.prio = sel.value; } });
+        saveItems(arr);
+      }
+      editingId = null; render(); if (cfg.onChange) cfg.onChange();
     }
     listEl.addEventListener("click", function (e) {
+      var sv = e.target.closest("[data-save]"); if (sv) { e.stopPropagation(); commitEdit(sv.getAttribute("data-save")); return; }
+      var cx = e.target.closest("[data-cancel]"); if (cx) { e.stopPropagation(); editingId = null; render(); return; }
+      var ed = e.target.closest("[data-edit-id]"); if (ed) { e.stopPropagation(); editingId = ed.getAttribute("data-edit-id"); render(); return; }
       var del = e.target.closest("[data-del]");
       if (del) { e.stopPropagation(); var id0 = del.getAttribute("data-del"); saveItems(items().filter(function (it) { return it.id !== id0; })); setDone(doneSet().filter(function (x) { return x !== id0; })); render(); if (cfg.onChange) cfg.onChange(); return; }
       var btn = e.target.closest(".task"); if (!btn) return;
       var id = btn.dataset.id, ds = doneSet(), i = ds.indexOf(id);
       if (i >= 0) ds.splice(i, 1); else ds.push(id);
       setDone(ds); render(); if (cfg.onChange) cfg.onChange();
+    });
+    listEl.addEventListener("keydown", function (e) {
+      var row = e.target.closest(".task-edit"); if (!row) return;
+      if (e.key === "Enter") { e.preventDefault(); commitEdit(row.getAttribute("data-editrow")); }
+      else if (e.key === "Escape") { e.preventDefault(); editingId = null; render(); }
     });
     document.getElementById(cfg.formId).addEventListener("submit", function (e) {
       e.preventDefault();
