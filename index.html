@@ -1488,6 +1488,25 @@
     el.className = "delta " + (pct >= 0 ? "up" : "down");
     el.innerHTML = arrow(pct) + Math.abs(pct) + "%";
   }
+  // Real Tilt Energy figures (AUD), pulled 28 Jul 2026. Shown on load so the
+  // dashboard reflects the actual store even before any live/manual data.
+  var SNAP_DATE = "28 Jul";
+  var SHOPIFY_SNAPSHOT = {
+    currency: "AUD",
+    revenue30: 470.99, revenuePrev30: 593,
+    orders30: 5, ordersPrev30: 9,
+    aov30: 94.20, aovPrev30: 65.89,
+    mtdRevenue: 391.99,
+    months: [
+      { label: "Jan", revenue: 0, orders: 0 },
+      { label: "Feb", revenue: 5212, orders: 51 },
+      { label: "Mar", revenue: 41, orders: 2 },
+      { label: "Apr", revenue: 0, orders: 0 },
+      { label: "May", revenue: 71.4, orders: 1 },
+      { label: "Jun", revenue: 672, orders: 10 },
+      { label: "Jul", revenue: 391.99, orders: 4 }
+    ]
+  };
   function applyShopify(d) {
     if (!d || d.error) return;
     liveShopify = d;
@@ -1574,6 +1593,12 @@
       function () { return "HTTP " + r.status; });
   }
   function shortReason(msg) { return /not configured/i.test(msg) ? "not configured" : "offline"; }
+  // Baseline: show the real baked-in figures on load (before manual/live data).
+  function applyShopifySnapshot() {
+    applyShopify(SHOPIFY_SNAPSHOT);
+    setFootSync("Shopify · snapshot · " + SNAP_DATE);
+    var sn = document.getElementById("syncNote"); if (sn) sn.textContent = "Tilt Energy · snapshot · " + SNAP_DATE;
+  }
 
   function initLiveData() {
     // These only resolve on your Netlify deployment; elsewhere they fail quietly and the snapshot stays.
@@ -1582,11 +1607,12 @@
         .then(function (r) { return r.ok ? r.json() : apiReason(r).then(function (m) { return Promise.reject(m); }); })
         .then(function (d) { applyShopify(d); setFootSync("Shopify · live · " + nowHM()); })
         .catch(function (err) {
-          // If the user entered figures manually, keep those instead of overwriting the status.
+          // No live token — keep whatever's already shown (manual entry or the
+          // baked-in snapshot). Reason is logged for diagnostics, not shown.
+          if (window.console) console.info("Shopify live data unavailable:", err);
           if (manualFigures()) { setManualStatus(manualFigures()); return; }
-          var why = shortReason(typeof err === "string" ? err : "offline");
-          setFootSync("Shopify · snapshot (" + why + ")");
-          var sn = document.getElementById("syncNote"); if (sn) sn.textContent = "Tilt Energy · snapshot (" + why + ")";
+          setFootSync("Shopify · snapshot · " + SNAP_DATE);
+          var sn = document.getElementById("syncNote"); if (sn) sn.textContent = "Tilt Energy · snapshot · " + SNAP_DATE;
         });
       fetch("/api/outlook")
         .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
@@ -2201,6 +2227,7 @@
   (function initTab() { var t = null; try { t = localStorage.getItem("dash-tab"); } catch (e) {} showTab(t || "home"); })();
   initFirebase();
   drawAll();
+  if (typeof applyShopifySnapshot === "function") applyShopifySnapshot();
   if (typeof initManualPanel === "function") initManualPanel();
   if (typeof applyManualFigures === "function") applyManualFigures();
   if (typeof initLiveData === "function") initLiveData();
