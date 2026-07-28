@@ -499,6 +499,15 @@
   .task-edit select { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 7px 8px; color: var(--ink); font-family: inherit; font-size: 12px; }
   /* On touch devices (no hover) keep row controls visible so they're tappable */
   @media (hover: none) { .g-row .row-del, .hb .row-del, .debt-row .row-del, .ag-row .row-del, .task .row-ctl { opacity: .5; } }
+  /* Manual "Update figures" panel (token-free Shopify entry) */
+  .mf-panel { margin: 0 0 18px; }
+  .mf-hint { font-size: 12px; color: var(--muted); margin: 2px 0 12px; line-height: 1.5; }
+  .mf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 11px 14px; }
+  .mf-grid label { display: flex; flex-direction: column; gap: 5px; font-size: 11.5px; font-weight: 650; color: var(--muted); }
+  .mf-grid input { border: 1px solid var(--border); background: var(--surface-inset); border-radius: 9px; padding: 8px 10px; color: var(--ink); font-family: inherit; font-size: 14px; font-weight: 600; }
+  .mf-grid input:focus { outline: none; border-color: var(--brass-line); }
+  .mf-actions { display: flex; gap: 8px; margin-top: 14px; align-items: center; }
+  #mfToggle { margin-left: 10px; }
   .g-row { position: relative; }
   .g-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 6px; }
   .g-top .okr-name { flex: 1; cursor: text; }
@@ -593,6 +602,20 @@
       <div class="band-head">
         <span class="band-tag">01</span><span class="band-title">The Business</span>
         <span class="band-rule"></span><span class="band-note" id="syncNote">Tilt Energy · synced from Shopify · Jul 18</span>
+        <button class="btn sm" id="mfToggle" type="button">Update figures</button>
+      </div>
+
+      <div class="mf-panel card" id="mfPanel" hidden>
+        <div class="card-head"><div class="card-title">Update Shopify figures</div><span class="card-meta" id="mfStatus"></span></div>
+        <p class="mf-hint">Type the numbers straight from your Shopify admin home screen — no token needed. Average order value is calculated for you. Saves to this browser and syncs to your other devices when signed in.</p>
+        <div class="mf-grid">
+          <label>Revenue · last 30 days (A$)<input id="mfRev" type="number" min="0" step="0.01" inputmode="decimal"></label>
+          <label>Orders · last 30 days<input id="mfOrd" type="number" min="0" step="1" inputmode="numeric"></label>
+          <label>Revenue · prior 30 days (A$)<input id="mfRevPrev" type="number" min="0" step="0.01" inputmode="decimal"></label>
+          <label>Orders · prior 30 days<input id="mfOrdPrev" type="number" min="0" step="1" inputmode="numeric"></label>
+          <label>Revenue · this month so far (A$)<input id="mfMtd" type="number" min="0" step="0.01" inputmode="decimal"></label>
+        </div>
+        <div class="mf-actions"><button class="btn primary sm" id="mfSave" type="button">Save figures</button><button class="btn sm" id="mfClose" type="button">Close</button></div>
       </div>
 
       <div class="kpis">
@@ -1494,6 +1517,56 @@
   }
   function setFootSync(txt) { var el = document.getElementById("footSync"); if (el) el.textContent = txt; }
   function nowHM() { var d = new Date(); return pad(d.getHours()) + ":" + pad(d.getMinutes()); }
+
+  /* ---------- Manual "Update figures" panel (token-free Shopify entry) ---------- */
+  var MANUAL_KEY = "dash-shopify-manual";
+  function manualFigures() { return load(MANUAL_KEY, null); }
+  function setManualStatus(m) {
+    var when = m && m.updatedAt ? new Date(m.updatedAt) : new Date();
+    var d = when.toLocaleDateString("en", { day: "numeric", month: "short" });
+    setFootSync("Shopify · manual · " + d);
+    var sn = document.getElementById("syncNote"); if (sn) sn.textContent = "Tilt Energy · figures entered manually · " + d;
+  }
+  function figuresToData(m) {
+    return { currency: "AUD",
+      revenue30: +m.revenue30 || 0, revenuePrev30: +m.revenuePrev30 || 0,
+      orders30: +m.orders30 || 0, ordersPrev30: +m.ordersPrev30 || 0,
+      aov30: (+m.orders30) ? (+m.revenue30 / +m.orders30) : 0,
+      aovPrev30: (+m.ordersPrev30) ? (+m.revenuePrev30 / +m.ordersPrev30) : 0,
+      mtdRevenue: +m.mtdRevenue || 0 };
+  }
+  function applyManualFigures() {
+    var m = manualFigures();
+    if (!m) return false;
+    applyShopify(figuresToData(m)); setManualStatus(m);
+    return true;
+  }
+  function initManualPanel() {
+    var panel = document.getElementById("mfPanel"), toggle = document.getElementById("mfToggle");
+    if (!panel || !toggle) return;
+    function setV(id, v) { var el = document.getElementById(id); if (el && v != null && !isNaN(v)) el.value = v; }
+    function num(id) { var v = parseFloat((document.getElementById(id) || {}).value); return isNaN(v) ? 0 : v; }
+    function prefill() {
+      var m = manualFigures(); if (!m) return;
+      setV("mfRev", m.revenue30); setV("mfOrd", m.orders30); setV("mfRevPrev", m.revenuePrev30);
+      setV("mfOrdPrev", m.ordersPrev30); setV("mfMtd", m.mtdRevenue);
+    }
+    document.getElementById("mfSave").addEventListener("click", function () {
+      var m = { revenue30: num("mfRev"), orders30: num("mfOrd"), revenuePrev30: num("mfRevPrev"),
+        ordersPrev30: num("mfOrdPrev"), mtdRevenue: num("mfMtd"), updatedAt: new Date().toISOString() };
+      saveManual(m);
+      var st = document.getElementById("mfStatus"); if (st) st.textContent = "Saved · " + nowHM();
+    });
+    document.getElementById("mfClose").addEventListener("click", function () { panel.hidden = true; });
+    toggle.addEventListener("click", function () {
+      panel.hidden = !panel.hidden;
+      if (!panel.hidden) { prefill(); var f = document.getElementById("mfRev"); if (f) f.focus(); }
+    });
+  }
+  function saveManual(m) {
+    save(MANUAL_KEY, m);
+    applyShopify(figuresToData(m)); setManualStatus(m);
+  }
   // Parse a failed /api response into a short, human reason so problems are
   // visible instead of silently swallowed (e.g. "not configured" vs "offline").
   function apiReason(r) {
@@ -1509,6 +1582,8 @@
         .then(function (r) { return r.ok ? r.json() : apiReason(r).then(function (m) { return Promise.reject(m); }); })
         .then(function (d) { applyShopify(d); setFootSync("Shopify · live · " + nowHM()); })
         .catch(function (err) {
+          // If the user entered figures manually, keep those instead of overwriting the status.
+          if (manualFigures()) { setManualStatus(manualFigures()); return; }
           var why = shortReason(typeof err === "string" ? err : "offline");
           setFootSync("Shopify · snapshot (" + why + ")");
           var sn = document.getElementById("syncNote"); if (sn) sn.textContent = "Tilt Energy · snapshot (" + why + ")";
@@ -2126,6 +2201,8 @@
   (function initTab() { var t = null; try { t = localStorage.getItem("dash-tab"); } catch (e) {} showTab(t || "home"); })();
   initFirebase();
   drawAll();
+  if (typeof initManualPanel === "function") initManualPanel();
+  if (typeof applyManualFigures === "function") applyManualFigures();
   if (typeof initLiveData === "function") initLiveData();
 
   // Register the service worker so the app is installable and works offline.
